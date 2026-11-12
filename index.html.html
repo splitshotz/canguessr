@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Canadaguessr — The Great White North</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800;900&family=Plus+Jakarta+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+
+    <!-- Leaflet CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- Pannellum (360 Viewer) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css"/>
+    <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
+
+    <!-- Turf.js (Geospatial) -->
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- MENU SCREEN -->
+    <div id="menu-screen" class="screen active">
+        <div id="setup-map"></div>
+        
+        <div class="menu-card">
+            <div class="brand">
+                <div class="brand-icon">🍁</div>
+                <div>
+                    <div class="brand-title font-heading">CANADA<span>GUESSR</span></div>
+                    <div class="brand-sub">Explore the True North. Ignore South Canada.</div>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label>Select Game Mode</label>
+                <div class="mode-grid">
+                    <div class="mode-card active" data-mode="country">
+                        <div class="icon">🇨🇦</div>
+                        <div class="title">All Canada</div>
+                        <div class="desc">Coast to coast to coast</div>
+                    </div>
+                    <div class="mode-card" data-mode="province">
+                        <div class="icon">🏔️</div>
+                        <div class="title">Province</div>
+                        <div class="desc">Pick a specific region</div>
+                    </div>
+                    <div class="mode-card" data-mode="city">
+                        <div class="icon">🏙️</div>
+                        <div class="title">Single City</div>
+                        <div class="desc">Explore one metro area</div>
+                    </div>
+                    <div class="mode-card" data-mode="draw">
+                        <div class="icon">✏️</div>
+                        <div class="title">Custom Area</div>
+                        <div class="desc">Draw your own polygon</div>
+                    </div>
+                    <div class="mode-card full-width" data-mode="city-quiz">
+                        <div class="icon" style="font-size: 1.8rem;">🎯</div>
+                        <div>
+                            <div class="title">Guess The City (Trivia Mode)</div>
+                            <div class="desc">Dropped in a mystery Canadian city — guess which one you're in!</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="control-group" id="sub-select-group" style="display: none;">
+                <label id="sub-select-label">Choose Region</label>
+                <select id="sub-select"></select>
+            </div>
+
+            <div class="draw-banner" id="draw-banner">
+                <span><strong>Draw Mode Active:</strong> Click anywhere on the map to place polygon corners and restrict the play zone.</span>
+                <button class="btn-secondary" id="clear-draw">Reset Polygon</button>
+            </div>
+
+            <button class="btn btn-primary" id="start-btn">
+                <span>Launch Expedition</span>
+                <span>→</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- GAME SCREEN -->
+    <div id="game-screen" class="screen">
+        <div class="top-hud">
+            <div class="hud-pill">
+                <div class="hud-stat">
+                    <span class="label">Mode</span>
+                    <span class="val" id="hud-mode" style="font-size: 1rem;">Canada</span>
+                </div>
+                <div class="hud-stat">
+                    <span class="label">Round</span>
+                    <span class="val" id="hud-round">1 <span>/ 5</span></span>
+                </div>
+                <div class="hud-stat">
+                    <span class="label">Total Score</span>
+                    <span class="val" id="hud-score">0</span>
+                </div>
+            </div>
+
+            <button class="btn-secondary" id="exit-btn" style="pointer-events: auto; backdrop-filter: blur(16px); background: var(--panel-bg);">
+                ✕ Exit Game
+            </button>
+        </div>
+
+        <div id="viewer-container">
+            <div id="pano"></div>
+            <div id="photo-backdrop"></div>
+            <img id="flat-image" style="display: none;" alt="Location View" />
+            
+            <div class="viewer-controls">
+                <button class="icon-btn" id="zoom-in" title="Zoom In">+</button>
+                <button class="icon-btn" id="zoom-out" title="Zoom Out">−</button>
+                <button class="icon-btn" id="zoom-reset" title="Reset View">⟲</button>
+                <span id="view-badge" class="badge-text">Street Photo</span>
+            </div>
+        </div>
+
+        <!-- MYSTERY CITY QUIZ HUD (Only shown in 'city-quiz' mode) -->
+        <div id="city-quiz-panel">
+            <div class="quiz-header">🎯 Which Canadian city are you in? (Click a city or pinpoint on map)</div>
+            <div class="quiz-grid" id="quiz-options"></div>
+        </div>
+
+        <!-- MINI MAP -->
+        <div id="guess-wrapper">
+            <button class="map-pin-btn" id="pin-map-btn">📌 Pin Open</button>
+            <div id="guess-map"></div>
+            <button id="submit-guess" class="font-heading">LOCK IN GUESS (SPACE)</button>
+        </div>
+
+        <!-- ROUND RESULT OVERLAY -->
+        <div id="result-overlay">
+            <div class="result-card">
+                <div id="result-map"></div>
+                <div class="result-footer">
+                    <div class="score-breakdown">
+                        <div class="score-title font-heading">
+                            <div id="res-points">+0 pts</div>
+                            <span id="res-distance">0 km away</span>
+                        </div>
+                        <div id="res-place" style="font-size: 0.92rem; color: var(--text-muted);">📍 Location</div>
+                        <div class="progress-track">
+                            <div class="progress-fill" id="res-bar"></div>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" id="next-round-btn" style="margin: 0; min-width: 210px;">
+                        Next Round →
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- FINAL SUMMARY MODAL -->
+        <div id="summary-modal">
+            <div class="summary-box">
+                <div style="font-size: 3.5rem;">🏆</div>
+                <h2 style="font-size: 2.2rem;">Expedition Complete!</h2>
+                <p style="color: var(--text-muted);">Final Score across 5 rounds</p>
+                <div style="font-size: 3.4rem; font-weight: 900; color: var(--primary);" class="font-heading" id="final-score">0</div>
+                <div class="progress-track" style="max-width: 100%;">
+                    <div class="progress-fill" id="final-bar"></div>
+                </div>
+                <p id="final-rank" style="font-weight: 600; color: #cbd5e1; margin-top: 4px;"></p>
+                <button class="btn btn-primary" id="play-again-btn" style="width: 100%; margin-top: 10px;">Play Again</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- LOADER -->
+    <div id="loader">
+        <div class="maple-spinner">🍁</div>
+        <h3 id="loader-title" style="font-size: 1.4rem;">Touching down in Canada...</h3>
+        <p id="loader-sub" style="color: var(--text-muted); font-size: 0.9rem;">Fetching high-resolution street & landmark imagery</p>
+    </div>
+
+    <!-- Custom Scripts -->
+    <script src="data.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
